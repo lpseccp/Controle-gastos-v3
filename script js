@@ -1,0 +1,152 @@
+const form = document.getElementById('form');
+const lista = document.getElementById('lista-transacoes');
+const saldoDiv = document.getElementById('saldo');
+const previstoDiv = document.getElementById('previsto');
+const salarioDiv = document.getElementById('salario');
+const formSalario = document.getElementById('form-salario');
+const inputSalario = document.getElementById('inputSalario');
+const graficoPizza = document.getElementById('graficoPizza');
+const graficoBarras = document.getElementById('graficoBarras');
+
+let transacoes = JSON.parse(localStorage.getItem('transacoes')) || [];
+let salario = parseFloat(localStorage.getItem('salario')) || 0;
+
+formSalario.addEventListener('submit', (e) => {
+  e.preventDefault();
+  salario = parseFloat(inputSalario.value);
+  localStorage.setItem('salario', salario);
+  atualizarTela();
+  alert('Salário salvo!');
+  formSalario.reset();
+});
+
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const descricao = document.getElementById('descricao').value;
+  const valor = parseFloat(document.getElementById('valor').value);
+  const categoria = document.getElementById('categoria').value;
+  const tipo = document.getElementById('tipo').value;
+
+  if (!descricao || !valor || !categoria || !tipo) {
+    alert('Preencha todos os campos!');
+    return;
+  }
+
+  transacoes.push({ descricao, valor, categoria, tipo, data: new Date() });
+  localStorage.setItem('transacoes', JSON.stringify(transacoes));
+  form.reset();
+  atualizarTela();
+});
+
+function atualizarTela() {
+  lista.innerHTML = '';
+
+  let saldo = 0;
+  let receitas = 0;
+  let despesas = 0;
+  let despesasPorCategoria = {};
+
+  transacoes.forEach(item => {
+    const li = document.createElement('li');
+    li.textContent = `${item.descricao} - R$ ${item.valor.toFixed(2)} (${item.categoria})`;
+    lista.appendChild(li);
+
+    if (item.tipo === 'receita') {
+      saldo += item.valor;
+      receitas += item.valor;
+    } else {
+      saldo -= item.valor;
+      despesas += item.valor;
+
+      if (!despesasPorCategoria[item.categoria]) {
+        despesasPorCategoria[item.categoria] = 0;
+      }
+      despesasPorCategoria[item.categoria] += item.valor;
+    }
+  });
+
+  salarioDiv.innerText = `Salário: R$ ${salario.toFixed(2)}`;
+  saldoDiv.innerText = `Saldo Atual: R$ ${saldo.toFixed(2)}`;
+  saldoDiv.style.color = saldo < 0 ? 'red' : 'green';
+
+  const diasRestantes = 30 - new Date().getDate();
+  const mediaGastoDiario = despesas / (30 - diasRestantes || 1);
+  const saldoPrevisto = saldo - (mediaGastoDiario * diasRestantes);
+
+  previstoDiv.innerText = `Saldo Previsto: R$ ${saldoPrevisto.toFixed(2)}`;
+  previstoDiv.style.color = saldoPrevisto < 0 ? 'red' : 'green';
+
+  verificarAlertas(despesasPorCategoria);
+  atualizarGraficos(despesasPorCategoria, receitas, despesas);
+}
+
+function verificarAlertas(despesasPorCategoria) {
+  const tetos = {
+    'Alimentação': salario * 0.2,
+    'Transporte': salario * 0.15,
+    'Lazer': salario * 0.1,
+    'Outros': salario * 0.1
+  };
+
+  for (const categoria in despesasPorCategoria) {
+    if (tetos[categoria]) {
+      const gasto = despesasPorCategoria[categoria];
+      const teto = tetos[categoria];
+
+      if (gasto >= teto * 0.8 && gasto < teto) {
+        alert(`Atenção: Você já gastou 80% do limite de ${categoria}!`);
+      } else if (gasto >= teto) {
+        alert(`Você ultrapassou o limite de ${categoria}!`);
+      }
+    }
+  }
+}
+
+let pizzaChart;
+let barrasChart;
+
+function atualizarGraficos(despesasPorCategoria, receitas, despesas) {
+  if (pizzaChart) pizzaChart.destroy();
+  if (barrasChart) barrasChart.destroy();
+
+  const categorias = Object.keys(despesasPorCategoria);
+  const valores = Object.values(despesasPorCategoria);
+
+  // Pizza
+  pizzaChart = new Chart(graficoPizza, {
+    type: 'pie',
+    data: {
+      labels: categorias,
+      datasets: [{
+        data: valores,
+        backgroundColor: ['#f44336', '#2196f3', '#4caf50', '#ff9800'],
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom' } }
+    }
+  });
+
+  // Barras
+  barrasChart = new Chart(graficoBarras, {
+    type: 'bar',
+    data: {
+      labels: ['Receitas', 'Despesas'],
+      datasets: [{
+        data: [receitas, despesas],
+        backgroundColor: ['#4caf50', '#f44336']
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true }
+      }
+    }
+  });
+}
+
+// Atualizar ao carregar
+atualizarTela();
